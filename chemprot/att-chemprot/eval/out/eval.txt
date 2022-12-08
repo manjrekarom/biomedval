@@ -1,9 +1,9 @@
 
 Total annotations: 3458
-Total predictions: 2725
-TP: 1369
-FN: 2089
-FP: 1356
-Precision: 0.5023853211009174
-Recall: 0.3958935801041064
-F-score: 0.442827106582565
+Total predictions: 2198
+TP: 1278
+FN: 2180
+FP: 920
+Precision: 0.5814376706096451
+Recall: 0.36957779063042223
+F-score: 0.4519094766619519

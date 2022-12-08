@@ -3,7 +3,8 @@ Attention based Recurrent Neural Network for biomedical relation extraction with
 
 The architecture is based on:
 
-Daojian Zeng, Kang Liu, Siwei Lai, Guangyou Zhou and Jun Zhao, 2014, Relation Classification via Convolutional Deep Neural Network
+Daojian Zeng, Kang Liu, Siwei Lai, Guangyou Zhou and Jun Zhao, 2014, Relation Classification via 
+Convolutional Deep Neural Network
 
 The implementation and IO is based on :
 https://github.com/UKPLab/deeplearning4nlp-tutorial/tree/master/2017-07_Seminar/Session%203%20-%20Relation%20CNN
@@ -284,11 +285,12 @@ def official_eval(output_tsv, gs_tsv):
 
 
 if __name__ == '__main__':
-    best_model_path = do_training()
+    # best_model_path = do_training()
     # model_path = './lightning_logs/version_2/checkpoints/epoch=5-step=2346.ckpt'
-    # model_path = './lightning_logs/version_7/checkpoints/epoch=6-step=2737.ckpt'
-    # model_path = './lightning_logs/version_7/checkpoints/epoch=8-step=3519.ckpt'
     # model_path = './lightning_logs/version_8/checkpoints/epoch=4-step=1370.ckpt'
     # model_path = './lightning_logs/version_8/checkpoints/epoch=5-step=1644.ckpt'
-    do_test(best_model_path, stage='test')
-    # do_test(model_path, stage='test')
+    model_path = './lightning_logs/version_9/checkpoints/epoch=7-step=2192.ckpt'
+    # model_path = './lightning_logs/version_9/checkpoints/epoch=9-step=2740.ckpt'
+    # model_path = './lightning_logs/version_10/checkpoints/epoch=15-step=5328.ckpt'    
+    # do_test(best_model_path, stage='test')
+    do_test(model_path, stage='test')
