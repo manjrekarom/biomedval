@@ -1,0 +1,1 @@
+rsync -azvp omanjrekar@context3.cs.stonybrook.edu:/home/omanjrekar/biomedval ./ --max-size=2m --exclude-from='./biomedval/rsyncignore.txt'

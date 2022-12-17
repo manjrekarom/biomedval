@@ -5,20 +5,23 @@ import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import classification_report, precision_recall_fscore_support, f1_score
 
-import spacy
-import scispacy
 import evaluate
 from datasets import load_dataset
 from transformers import DataCollatorForSeq2Seq
 from transformers import Seq2SeqTrainer, Seq2SeqTrainingArguments, T5Config, \
     T5ForConditionalGeneration, T5Tokenizer
 
-# argparse
-parser = argparse.ArgumentParser(description='SuMe training using HF Trainer API')
+from seqeval.metrics import f1_score, accuracy_score, classification_report, recall_score, precision_score
 
-parser.add_argument('--trainset', type=str, default='data/train.txt_cleaned.tsv', help='ChemProt training set')
-parser.add_argument('--valset', type=str, default='data/dev.txt_cleaned.tsv', help='ChemProt dev set')
-parser.add_argument('--testset', type=str, default='data/test.txt_cleaned.tsv', help='ChemProt testing set')
+import utils
+
+
+# argparse
+parser = argparse.ArgumentParser(description='NER (BC5CDR-Chem) training using HF Trainer API')
+
+parser.add_argument('--trainset', type=str, default='data/train.tsv_cleaned.tsv', help='ChemProt training set')
+parser.add_argument('--valset', type=str, default='data/devel.tsv_cleaned.tsv', help='ChemProt dev set')
+parser.add_argument('--testset', type=str, default='data/test.tsv_cleaned.tsv', help='ChemProt testing set')
 parser.add_argument('--use-ckpt', type=str, default=None, help='Use ckpt for eval. Works when --eval-only is set')
 parser.add_argument('--eval-only', action='store_true', help='Only predict/evaluate')
 parser.add_argument('--use-both', action='store_true', help='Use both train and val for training')
@@ -30,12 +33,10 @@ parser.add_argument('--max-steps', type=int, default=-1, help='Max steps (overri
 args = parser.parse_args()
 print('Training Args: ', args)
 
-# load spacy model for sentence tokenization
-# core_sci_sm_nlp = spacy.load('en_core_sci_sm')
 
 # load datasets
-# trainset = load_dataset('text', data_files='data/train.txt_cleaned.tsv', split='train[:512]')
 if args.use_both:
+    # trainset = load_dataset('text', data_files='data/train.txt_cleaned.tsv', split='train[:512]')
     trainset = load_dataset('text', data_files={"train": [args.trainset, args.valset]}, split='train')
     valset = load_dataset('text', data_files=args.testset, split='train')
 else:
@@ -48,21 +49,6 @@ print(trainset.features)
 print(valset.features)
 print(testset.features)
 
-# pandas datasets
-def lookup_labels(dataset, splitted=False):
-    dataset = dataset.with_format('pandas')
-    if not splitted:
-        labels: pd.Series = dataset['text'].map(lambda example: example.split('\t')[1])
-    else:
-        labels 
-    return labels
-
-labels = lookup_labels(trainset)
-print('Labels in ChemProt: ', labels.value_counts())
-label_encoder = LabelEncoder().fit(labels)
-print('Label encoder classes:', label_encoder.classes_)
-test_labels = sorted(label_encoder.transform(lookup_labels(testset).value_counts().index))
-print('Test labels:', test_labels)
 
 # load config, tokenizer and model
 # checkpoint = '/home/omanjrekar/checkpoints/nlp/t5-sume'
@@ -83,7 +69,7 @@ data_collator = DataCollatorForSeq2Seq(tokenizer=t5_tokenizer, model=t5_model,
 label_pad_token_id=t5_tokenizer.pad_token_id)
 
 # preprocess dataset
-def preprocess_function(examples, prefix="chemprot_re: "):
+def preprocess_function(examples, prefix="bc5cdr_chem_ner: "):
     # print(examples['context'])
     inputs, labels = zip(*[example.split('\t') for example in examples['text']])
     inputs = [prefix + doc.strip() for doc in inputs]
@@ -92,7 +78,7 @@ def preprocess_function(examples, prefix="chemprot_re: "):
 
     with t5_tokenizer.as_target_tokenizer():
         # TODO:
-        labels = t5_tokenizer(labels, max_length=15, truncation=True)
+        labels = t5_tokenizer(labels, max_length=256, truncation=True)
 
     dataset["labels"] = labels["input_ids"]
     return dataset
@@ -105,8 +91,8 @@ testset = testset.map(preprocess_function, remove_columns=['text'], batched=True
 # all about metrics
 # preprocess text for metrics
 def postprocess_text(preds, labels):
-    preds = [pred.strip() for pred in preds]
-    labels = [label.strip() for label in labels]
+    preds = [pred.strip().lower() for pred in preds]
+    labels = [label.strip().lower() for label in labels]
 
     return preds, labels
 
@@ -117,21 +103,21 @@ def postprocess_text(preds, labels):
 # recall = evaluate.load("recall")
 dropped = 0
 
-def le_transform(preds, targets):
-    le_preds = []
-    le_targets = []
-    dropped_batch = 0
-    for i in range(len(preds)):
-        try:
-            le_preds.append(label_encoder.transform([preds[i]])[0])
-            le_targets.append(label_encoder.transform([targets[i]])[0])
-        except ValueError:
-            dropped_batch += 1
-    print('Dropped batches:', dropped_batch)
-    return le_preds, le_targets, dropped_batch
+# def le_transform(preds, targets):
+#     le_preds = []
+#     le_targets = []
+#     dropped_batch = 0
+#     for i in range(len(preds)):
+#         try:
+#             le_preds.append(label_encoder.transform([preds[i]])[0])
+#             le_targets.append(label_encoder.transform([targets[i]])[0])
+#         except ValueError:
+#             dropped_batch += 1
+#     print('Dropped batches:', dropped_batch)
+#     return le_preds, le_targets, dropped_batch
 
 
-def convert2le(preds, labels, tokenizer, debug=False):
+def convert2bio(preds, labels, tokenizer, debug=False):
     if isinstance(preds, tuple):
         preds = preds[0]
     decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
@@ -142,27 +128,56 @@ def convert2le(preds, labels, tokenizer, debug=False):
     
     if debug:
         print('Eval preds length:', len(preds))
-        print('First 25 preds values:', decoded_preds[:25])
-        print('First 25 target values:', decoded_labels[:25])
+        print('First 4 preds values:', decoded_preds[:4])
+        print('First 4 target values:', decoded_labels[:4])
 
     # Some simple post-processing
     decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
-    return le_transform(decoded_preds, decoded_labels)
+    dropped_idxs = []
+    final_preds = []
+    final_labels = []
+    for i in range(len(decoded_labels)):
+        try:
+            final_pred = utils.convert_bio_labels(decoded_preds[i])
+            final_label = utils.convert_bio_labels(decoded_labels[i])
+            len_pred = len(final_pred)
+            len_label = len(final_label)
+            if len_pred > len_label:
+                final_pred = final_pred[:len_label]
+            else:
+                final_pred = final_pred + ['PAD'] * (len_label - len_pred)
+            final_preds.append(final_pred)
+            final_labels.append(final_label)
+        except Exception as e:
+            print(e)
+            dropped_idxs.append(i)
+            # pass
+    return final_preds, final_labels, dropped_idxs
 
 
 # bleurt_metric = load_metric("bleurt")
+# seqeval = evaluate.load("seqeval")
 def compute_metrics(eval_preds):
     global dropped
     preds, labels = eval_preds
     batch_size = len(labels)
-    le_preds, le_labels, dropped_batch = convert2le(preds, labels, t5_tokenizer, debug=True)
-    print('First 25 le_preds values:', le_preds[:25])
-    print('First 25 le_labels values:', le_labels[:25])
-    labels = range(len(label_encoder.classes_))
+    bio_preds, bio_labels, dropped_idxs = convert2bio(preds, labels, t5_tokenizer, debug=True)
+    
+    print('First 4 bio_preds values:', bio_preds[:4])
+    print('First 4 bio_labels values:', bio_labels[:4])
+    print('First 4 dropped idxs:', dropped_idxs)
 
-    dropped += dropped_batch / batch_size
-    p, r, f, _ = precision_recall_fscore_support(y_pred=le_preds, y_true=le_labels, average='macro')
-    result = {'precision': p, 'recall': r, 'f1': f}
+    dropped += len(dropped_idxs) / batch_size
+    # result = seqeval.compute(predictions=bio_preds, references=bio_labels, average='macro')
+    # result = {'precision': p, 'recall': r, 'f1': f}
+    f1score = f1_score(bio_labels, bio_preds)
+    recallscore = recall_score(bio_labels, bio_preds)
+    precisionscore = precision_score(bio_labels, bio_preds)
+    
+    result = {}
+    result['f1'] = f1score
+    result['recall'] = recallscore
+    result['precision'] = precisionscore
     result['drop_rate'] = dropped
     # prediction_lens = [np.count_nonzero(pred != t5_tokenizer.pad_token_id) for pred in preds]
     # result["gen_len"] = np.mean(prediction_lens)
@@ -181,16 +196,16 @@ training_args = Seq2SeqTrainingArguments(
     learning_rate=2e-5,
     evaluation_strategy='epoch',
     save_strategy='epoch',
-    greater_is_better=True,
     # load best model at the end
     load_best_model_at_end=True,
     metric_for_best_model='f1',
+    greater_is_better=True,
+    predict_with_generate=True,
     weight_decay=0.01,
     save_total_limit=3,
     num_train_epochs=args.num_epochs,
     max_steps=args.max_steps,
     fp16=False,
-    predict_with_generate=True,
     gradient_accumulation_steps=4,
 )
 
@@ -217,8 +232,7 @@ if not args.eval_only:
 preds, labels, metrics = trainer.predict(testset)
 print('\n\n** Metrics **\n')
 print(metrics)
-le_preds, le_labels, dropped = convert2le(preds, labels, t5_tokenizer, debug=True)
-print('Report:', classification_report(y_true=le_labels, y_pred=le_preds, digits=4,
-    labels=test_labels, target_names=label_encoder.classes_))
-p, r, f, support = precision_recall_fscore_support(y_pred=le_preds, y_true=le_labels, average='micro')
-print(f'Micro precision: {p}, recall: {r}, f1: {f}, support: {support}')
+bio_preds, bio_labels, dropped_idxs = convert2bio(preds, labels, t5_tokenizer, debug=True)
+print('Report:', classification_report(bio_labels, bio_preds))
+# p, r, f, support = precision_recall_fscore_support(y_pred=le_preds, y_true=le_labels, average='macro')
+# print(f'Micro precision: {p}, recall: {r}, f1: {f}, support: {support}')
