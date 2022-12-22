@@ -13,12 +13,12 @@ Install all other libraries
 
 **Train a t5 model**
 ```
+CUDA_VISIBLE_DEVICES=0 python minimal_train.py --name default --batch-size 4
 ```
-
-**NOTE:** There's a bug which prevents the correct best model from being loaded at the end for evaluation. I am guessing the way to solve this is by using a new trainer with the saved t5_model. I haven't tried it though. For now please rely on running the eval only command shown below.
 
 **Evaluate a t5 model**
 ```
+CUDA_VISIBLE_DEVICES=0 python minimal_eval.py --name default --use-ckpt ./checkpoints/default/checkpoint-8550/ --results-dir ./results
 ```
 
 There are other options available which you can find in the `minimal_train.py` script.
